@@ -1,0 +1,166 @@
+from dotenv import load_dotenv
+
+from livekit import agents
+from livekit.agents import AgentSession, Agent, RoomInputOptions, ChatContext
+from livekit.plugins import noise_cancellation, cartesia, openai
+from livekit.plugins.openai import realtime
+from openai.types.beta.realtime.session import TurnDetection
+
+from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
+from commands.calendar import create_calendar_event, set_reminder
+from commands.communication import send_text_message, send_email, call_contact
+from commands.media import play_music, can_you_open_the_app, search_web
+from commands.system import (
+    unmute_microphone,
+    mute_microphone,
+    restart_system,
+    start_a_new_project,
+    power_down,
+)
+from commands.utilities import (
+    get_time,
+    get_date,
+    get_weather,
+    generate_code,
+    get_eta,
+    turn_off_lamp,
+    turn_on_lamp,
+    set_timer,
+)
+from core.context_watcher import start_scheduler
+from coding.mangeprojects import manage_vscode_project, create_or_open_file, generate_code_in_file
+
+from mem0 import AsyncMemoryClient
+import json
+import logging
+
+load_dotenv()
+
+
+class Assistant(Agent):
+    def __init__(self, chat_ctx=None) -> None:
+        super().__init__(
+            instructions=AGENT_INSTRUCTION,
+            llm=openai.realtime.RealtimeModel(
+                modalities=["text"],
+                turn_detection=TurnDetection(
+                    type="semantic_vad",
+                    eagerness="auto",
+                    create_response=True,
+                    interrupt_response=True,
+                )
+            ),
+            tts=cartesia.TTS(
+                model="sonic-2",
+                voice="5891f60a-e5e5-4f99-836e-c2387feb4342",
+            ),
+            tools=[
+                can_you_open_the_app, get_time, get_date,
+                get_weather, search_web,
+                play_music, send_email, call_contact, power_down,
+                send_text_message, set_timer, manage_vscode_project, 
+                create_or_open_file, generate_code_in_file,
+                create_calendar_event, set_reminder,
+                mute_microphone, unmute_microphone, get_eta,
+                 turn_on_lamp, turn_off_lamp,
+                restart_system,
+            ],
+            chat_ctx=chat_ctx
+        )
+
+# ==============================
+# ENTRYPOINT
+# ==============================
+async def entrypoint(ctx: agents.JobContext):
+    
+    async def shutdown_hook(chat_ctx: ChatContext, mem0: AsyncMemoryClient, memory_str: str):
+        logging.info("Shutting down, saving chat context to memory...")
+        messages_formatted = [
+            
+        ]
+
+        logging.info(f"Chat context messages: {chat_ctx.items}")
+
+        for item in chat_ctx.items:
+            content_str = ''.join(item.content) if isinstance(item.content, list) else str(item.content)
+            
+            if memory_str and memory_str in content_str:
+                continue
+            
+            if item.role in ['user', 'assistant']:
+                messages_formatted.append({
+                    "role": item.role,
+                    "content": content_str.strip()
+                })
+
+        logging.info(f"Formatted messages to add to memory: {messages_formatted}")
+        if messages_formatted:
+            try:
+                await mem0.add(messages_formatted, user_id="Daniel")
+                logging.info("Chat context saved to memory.")
+            except Exception as e:
+                logging.error(f"Failed to save chat context to Mem0: {e}")
+        else:
+            logging.info("No messages to save, skipping Mem0 add.")
+
+    # Initialize session and assistant
+    session = AgentSession(tts=cartesia.TTS(
+                model="sonic-2",
+                voice="5891f60a-e5e5-4f99-836e-c2387feb4342",
+            ))
+
+    # Initialize memory
+    mem0 = AsyncMemoryClient()
+    user_name = "Daniel"
+    results = await mem0.get_all(user_id=user_name)
+    initial_ctx = ChatContext()
+    memory_str = ''
+
+    if results:
+        memories = [
+            {
+                "memory": result["memory"],
+                "updated_at": result["updated_at"]
+            }
+            for result in results
+        ]
+        memory_str = json.dumps(memories)
+        logging.info(f"Memories: {memory_str}")
+        initial_ctx.add_message(
+            role="assistant",
+            content=f"The user's name is {user_name}, and this is relvant context about him: {memory_str}."
+        )
+
+    # Create assistant with correct ChatContent
+    assistant = Assistant(chat_ctx=initial_ctx)
+    
+
+    # Start scheduler (reminders, etc.)
+    start_scheduler(session)
+
+    # Connect to the LiveKit room
+    await ctx.connect()
+
+    # Start session with assistant
+    await session.start(
+        room=ctx.room,
+        agent=assistant,
+        room_input_options=RoomInputOptions(
+            video_enabled=True,
+            noise_cancellation=noise_cancellation.BVC(),
+        ),
+    )
+
+    # Sync callback for transcription
+    # def on_transcription(event):
+    #     transcription = event.transcription
+    #     asyncio.create_task(assistant.handle_user_input(transcription))
+
+    # session.on("transcription", on_transcription)
+
+    # Register shutdown callback
+    ctx.add_shutdown_callback(lambda: shutdown_hook(session._agent.chat_ctx, mem0, memory_str))
+
+
+if __name__ == "__main__":
+    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint))
