@@ -5,6 +5,11 @@ import json
 import openai
 from dotenv import load_dotenv
 import re
+import ast
+import os
+import git  # GitPython
+from git import Repo
+from livekit.agents import function_tool
 
 load_dotenv()
 
@@ -142,9 +147,9 @@ async def create_or_open_file(file_name: str) -> str:
     
 
 @function_tool
-async def generate_code_in_file(file_name: str, prompt: str, model: str = "gpt-4o-mini") -> str:
+async def generate_code_in_file(file_name: str, prompt: str, model: str = "gpt-5-mini") -> str:
     """
-    Generate code using OpenAI and insert it into a file inside the active project.
+    Generate code using GPT-5 and insert it into a file inside the active project.
     Explanations are automatically converted into code comments.
     """
     try:
@@ -165,7 +170,7 @@ async def generate_code_in_file(file_name: str, prompt: str, model: str = "gpt-4
         # Detect comment style based on file extension
         comment_prefix = get_comment_prefix(file_name)
 
-        # Generate code
+        # Generate code using GPT-5
         response = openai.chat.completions.create(
             model=model,
             messages=[
@@ -183,20 +188,163 @@ async def generate_code_in_file(file_name: str, prompt: str, model: str = "gpt-4
             ]
         )
 
-        # Get raw response content
+        # Extract the code from GPT-5 response
         code = response.choices[0].message.content.strip()
 
-        # Remove any leftover triple backticks or markdown formatting
+        # Clean up any leftover formatting
         code = re.sub(r"```[a-zA-Z0-9]*", "", code).replace("```", "").strip()
 
-        # Write clean code with explanations as comments
+        # Write code to file
         with open(file_path, "w") as f:
             f.write(code)
 
-        # Open the file inside VS Code in the same window
+        # Open file in VS Code
         subprocess.run(["code", "--reuse-window", file_path])
 
         return f"✅ Code generated with explanations as comments in '{file_name}'"
 
     except Exception as e:
         return f"❌ Failed to generate code: {str(e)}"
+
+@function_tool
+async def initialize_git_repo(project_name: str, github_remote_url: str = None) -> str:
+    """
+    Initialize a Git repository for the given project without making any commits.
+    Optionally add a remote URL.
+
+    Args:
+        project_name (str): Project name.
+        github_remote_url (str, optional): Remote GitHub repo URL.
+
+    Returns:
+        str: Status message.
+    """
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+
+        if not os.path.exists(project_path):
+            return f"⚠️ Project '{project_name}' does not exist."
+
+        # Initialize repo if not already initialized
+        if not os.path.exists(os.path.join(project_path, ".git")):
+            repo = Repo.init(project_path)
+        else:
+            repo = Repo(project_path)
+
+        # Add remote if provided
+        if github_remote_url:
+            if "origin" not in [r.name for r in repo.remotes]:
+                repo.create_remote("origin", github_remote_url)
+            else:
+                repo.remotes.origin.set_url(github_remote_url)
+
+            return f"✅ Git repo initialized and remote set for '{project_name}'."
+        return f"✅ Git repository initialized for '{project_name}'."
+
+    except Exception as e:
+        return f"❌ Failed to initialize Git repo: {str(e)}"
+
+
+@function_tool
+async def git_stage_file(project_name: str, file_path: str) -> str:
+    """Stage a specific file (like 'git add file')."""
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+        repo = Repo(project_path)
+
+        abs_file_path = os.path.join(project_path, file_path)
+        if not os.path.exists(abs_file_path):
+            return f"⚠️ File '{file_path}' does not exist."
+
+        repo.git.add(file_path)
+        return f"✅ Staged file: {file_path}"
+
+    except Exception as e:
+        return f"❌ Failed to stage file: {str(e)}"
+
+
+@function_tool
+async def git_unstage_file(project_name: str, file_path: str) -> str:
+    """Unstage a specific file (like 'git reset HEAD file')."""
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+        repo = Repo(project_path)
+
+        repo.git.reset("HEAD", file_path)
+        return f"✅ Unstaged file: {file_path}"
+
+    except Exception as e:
+        return f"❌ Failed to unstage file: {str(e)}"
+
+
+@function_tool
+async def git_commit(project_name: str, commit_message: str) -> str:
+    """Commit only staged changes (like VS Code)."""
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+        repo = Repo(project_path)
+
+        # Check if there’s anything staged
+        if not repo.index.entries:
+            return "⚠️ No staged changes to commit."
+
+        repo.index.commit(commit_message)
+        return f"✅ Commit successful: '{commit_message}'"
+
+    except Exception as e:
+        return f"❌ Failed to commit: {str(e)}"
+
+
+@function_tool
+async def git_push(project_name: str, branch: str = "main") -> str:
+    """Push commits to remote origin."""
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+        repo = Repo(project_path)
+
+        if "origin" not in [r.name for r in repo.remotes]:
+            return "⚠️ No remote named 'origin'. Add one before pushing."
+
+        origin = repo.remotes.origin
+        origin.push(refspec=f"{branch}:{branch}")
+
+        return f"✅ Successfully pushed '{branch}' to remote."
+
+    except Exception as e:
+        return f"❌ Failed to push: {str(e)}"
+
+
+@function_tool
+async def git_undo_last_commit(project_name: str, keep_changes: bool = True) -> str:
+    """
+    Undo the last commit.
+    If keep_changes=True → soft reset (keeps changes as unstaged).
+    If keep_changes=False → hard reset (discards changes).
+    """
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+        repo = Repo(project_path)
+
+        if keep_changes:
+            repo.git.reset("--soft", "HEAD~1")
+            return "↩️ Last commit undone, changes kept."
+        else:
+            repo.git.reset("--hard", "HEAD~1")
+            return "🗑️ Last commit undone and changes discarded."
+
+    except Exception as e:
+        return f"❌ Failed to undo last commit: {str(e)}"
+
+
+@function_tool
+async def git_status(project_name: str) -> str:
+    """Get the current git status (staged, unstaged, untracked)."""
+    try:
+        project_path = os.path.join(PROJECTS_ROOT, project_name)
+        repo = Repo(project_path)
+
+        return repo.git.status()
+
+    except Exception as e:
+        return f"❌ Failed to get status: {str(e)}"
+    
