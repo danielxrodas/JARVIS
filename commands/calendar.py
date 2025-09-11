@@ -304,3 +304,76 @@ async def get_reminders(list_name: str = "Reminders") -> list:
 
     except subprocess.CalledProcessError as e:
         return []
+    
+@function_tool
+async def delete_calendar_event(title: str, calendar_name: str = "Work") -> str:
+    """
+    Deletes the first calendar event matching the given title from the specified calendar.
+
+    Args:
+        title (str): Event title to delete
+        calendar_name (str, optional): Calendar to delete from. Defaults to "Work".
+
+    Returns:
+        str: Success or error message
+    """
+    title_escaped = title.replace('"', '\\"')
+    applescript = f'''
+    tell application "Calendar"
+        tell calendar "{calendar_name}"
+            set theEvent to first event whose summary is "{title_escaped}"
+            delete theEvent
+        end tell
+    end tell
+    '''
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", applescript,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            return f"✅ Calendar event '{title}' deleted from '{calendar_name}'"
+        else:
+            return f"❌ Failed to delete event '{title}': {stderr.decode().strip()}"
+    except Exception as e:
+        return f"❌ Exception occurred: {e}"
+    
+    
+@function_tool
+async def delete_reminder(title: str, list_name: str = "Reminders") -> str:
+    """
+    Deletes a reminder by title from the specified list.
+
+    Args:
+        title (str): The title of the reminder to delete
+        list_name (str, optional): The list from which to delete. Defaults to "Reminders".
+
+    Returns:
+        str: Success or error message
+    """
+    title_escaped = title.replace('"', '\\"')
+    applescript = f'''
+    tell application "Reminders"
+        tell list "{list_name}"
+            set reminderToDelete to first reminder whose name is "{title_escaped}"
+            delete reminderToDelete
+        end tell
+    end tell
+    '''
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", applescript,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            return f"✅ Reminder '{title}' deleted from list '{list_name}'"
+        else:
+            return f"❌ Failed to delete reminder '{title}': {stderr.decode().strip()}"
+    except Exception as e:
+        return f"❌ Exception occurred: {e}"

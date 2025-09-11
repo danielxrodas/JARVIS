@@ -1,4 +1,5 @@
 import subprocess
+from dotenv import load_dotenv
 from livekit.agents import function_tool
 import logging
 from livekit.agents import function_tool, RunContext
@@ -11,12 +12,16 @@ from livekit.agents import function_tool, RunContext
 import subprocess
 from typing import Optional
 
+
+load_dotenv()
+
 contacts = {
     "dad": os.getenv("DAD"),
     "mom": os.getenv("MOM"),
     "david": os.getenv("DAVID"),
     "myself": os.getenv("MYSELF"),
 }
+
 
 @function_tool()
 async def send_text_message(recipient: str, message: str, contacts_dict: dict = contacts):
@@ -126,24 +131,33 @@ async def send_email(
         return f"An error occurred while sending email: {str(e)}"
     
 
+CONTACTS = {
+    "dad": os.getenv("DAD"),
+    "mom": os.getenv("MOM"),
+    "david": os.getenv("DAVID")
+}
+
 @function_tool
 async def call_contact(contact: str) -> str:
     """
     Calls a contact using FaceTime via URL (macOS).
-
+    
     Args:
-        contact (str): Phone number or contact email
-
+        contact (str): Name of the contact (e.g., "dad", "mom").
+        
     Returns:
         str: Success or error message
     """
-    # Remove spaces from phone number / email
-    contact_clean = contact.replace(" ", "")
-    
-    facetime_url = f"facetime://{contact_clean}"
+    contact_key = contact.strip().lower()
+    contact_info = CONTACTS.get(contact_key)
+
+    if not contact_info:
+        return f"❌ Contact '{contact}' not found in your contacts."
+
+    facetime_url = f"facetime://{contact_info}"
 
     try:
         subprocess.run(["open", facetime_url], check=True)
-        return f"📞 Calling {contact} now..."
+        return f"📞 Calling {contact_key} ({contact_info}) now..."
     except subprocess.CalledProcessError as e:
-        return f"❌ Failed to call {contact}: {e}"
+        return f"❌ Failed to call {contact_key}: {e}"

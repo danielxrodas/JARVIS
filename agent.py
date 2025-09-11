@@ -7,7 +7,7 @@ from livekit.plugins.openai import realtime
 from openai.types.beta.realtime.session import TurnDetection
 
 from prompts import AGENT_INSTRUCTION
-from commands.calendar import create_calendar_event, set_reminder
+from commands.calendar import create_calendar_event, set_reminder, delete_reminder, delete_calendar_event
 from commands.communication import send_text_message, send_email, call_contact
 from commands.media import play_music, can_you_open_the_app, search_web
 from commands.system import (
@@ -25,7 +25,6 @@ from commands.utilities import (
     get_eta,
     turn_off_lamp,
     turn_on_lamp,
-    set_timer,
 )
 from core.context_watcher import start_scheduler
 from coding.mangeprojects import (manage_vscode_project, create_or_open_file, generate_code_in_file,
@@ -49,8 +48,8 @@ class Assistant(Agent):
         super().__init__(
             instructions=AGENT_INSTRUCTION,
             llm=openai.realtime.RealtimeModel(
-                voice="sage",
-                # modalities=["text"],
+                # voice="sage",
+                modalities=["text"],
                 turn_detection=TurnDetection(
                     type="semantic_vad",
                     eagerness="auto",
@@ -58,21 +57,21 @@ class Assistant(Agent):
                     interrupt_response=True,
                 )
             ),
-            # tts=cartesia.TTS(
-            #     model="sonic-2",
-            #     voice="5891f60a-e5e5-4f99-836e-c2387feb4342",
-            # ),
+            tts=cartesia.TTS(
+                model="sonic-2",
+                voice="5891f60a-e5e5-4f99-836e-c2387feb4342",
+            ),
             tools=[
                 can_you_open_the_app, get_time, get_date,
                 get_weather, search_web, initialize_git_repo,
                 git_stage_file, git_unstage_file, git_commit,
                 git_push, git_undo_last_commit, git_status,
                 play_music, send_email, call_contact, power_down,
-                send_text_message, set_timer, manage_vscode_project, 
+                send_text_message, manage_vscode_project, 
                 create_or_open_file, generate_code_in_file,
-                create_calendar_event, set_reminder,
+                create_calendar_event, set_reminder, delete_calendar_event,
                 mute_microphone, unmute_microphone, get_eta,
-                turn_on_lamp, turn_off_lamp,
+                turn_on_lamp, turn_off_lamp, delete_reminder,
                 restart_system,
             ],
             chat_ctx=chat_ctx

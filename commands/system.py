@@ -2,6 +2,7 @@ from livekit.agents import function_tool
 import os
 import asyncio
 import subprocess
+import signal
 
 @function_tool
 async def mute_microphone() -> str:
@@ -97,4 +98,5 @@ async def restart_system():
 @function_tool
 async def power_down() -> str:
     """Immediately stops ARTIS."""
-    os._exit(0)
+    os.kill(os.getpid(), signal.SIGINT)
+    return "JARVIS is powering down..."
