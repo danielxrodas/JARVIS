@@ -27,7 +27,7 @@ from commands.utilities import (
     turn_on_lamp,
 )
 from core.context_watcher import start_scheduler
-from coding.mangeprojects import (manage_vscode_project, create_or_open_file, generate_code_in_file,
+from coding.mangeprojects import (manage_python_project, create_or_open_python, generate_python_code,
                                 initialize_git_repo,
                                 git_stage_file,
                                 git_unstage_file,
@@ -35,7 +35,11 @@ from coding.mangeprojects import (manage_vscode_project, create_or_open_file, ge
                                 git_push,
                                 git_undo_last_commit,
                                 git_status)
-
+from coding.javaprojects import (
+    manage_spring_boot_project,
+    create_or_open_spring_file,
+    generate_spring_java_code,
+)
 from mem0 import AsyncMemoryClient
 import json
 import logging
@@ -67,8 +71,9 @@ class Assistant(Agent):
                 git_stage_file, git_unstage_file, git_commit,
                 git_push, git_undo_last_commit, git_status,
                 play_music, send_email, call_contact, power_down,
-                send_text_message, manage_vscode_project, 
-                create_or_open_file, generate_code_in_file,
+                send_text_message, manage_python_project, 
+                create_or_open_python, generate_python_code, manage_spring_boot_project,
+                create_or_open_spring_file, generate_spring_java_code, 
                 create_calendar_event, set_reminder, delete_calendar_event,
                 mute_microphone, unmute_microphone, get_eta,
                 turn_on_lamp, turn_off_lamp, delete_reminder,

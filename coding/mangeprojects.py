@@ -30,9 +30,10 @@ def get_current_project() -> str:
             return data.get("current_project")
     return None
 
+PYTHON_PATH = os.getenv("PYTHON_PATH")
 # Hardcoded root path for all projects
 PROJECTS_ROOT = os.path.expanduser(
-    "/Users/daniel/Documents/Projects/VISUAL STUDIO CODE"
+    PYTHON_PATH
 )  # Change this if needed
 
 def get_comment_prefix(file_name: str) -> str:
@@ -53,7 +54,7 @@ def get_comment_prefix(file_name: str) -> str:
     }.get(extension, "#")  # Default to Python-style comments
     
 @function_tool
-async def manage_vscode_project(project_name: str, language: str = "python") -> str:
+async def manage_python_project(project_name: str, language: str = "python") -> str:
     """
     Create or open a VS Code project automatically.
 
@@ -112,7 +113,7 @@ async def manage_vscode_project(project_name: str, language: str = "python") -> 
 
 
 @function_tool
-async def create_or_open_file(file_name: str) -> str:
+async def create_or_open_python(file_name: str) -> str:
     """
     Create or open a file inside the **currently active VS Code project**.
 
@@ -147,7 +148,7 @@ async def create_or_open_file(file_name: str) -> str:
     
 
 @function_tool
-async def generate_code_in_file(file_name: str, prompt: str, model: str = "gpt-5-mini") -> str:
+async def generate_python_code(file_name: str, prompt: str, model: str = "gpt-5-mini") -> str:
     """
     Generate code using GPT-5 and insert it into a file inside the active project.
     Explanations are automatically converted into code comments.
