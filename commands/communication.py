@@ -140,7 +140,7 @@ CONTACTS = {
 @function_tool
 async def call_contact(contact: str) -> str:
     """
-    Calls a contact using FaceTime via URL (macOS).
+    Calls a contact using the Phone app on macOS (bypassing confirmation).
     
     Args:
         contact (str): Name of the contact (e.g., "dad", "mom").
@@ -154,10 +154,23 @@ async def call_contact(contact: str) -> str:
     if not contact_info:
         return f"❌ Contact '{contact}' not found in your contacts."
 
-    facetime_url = f"facetime://{contact_info}"
-
     try:
-        subprocess.run(["open", facetime_url], check=True)
+        # Launch Phone app with the number
+        subprocess.run(["open", f"tel://{contact_info}"], check=True)
+
+        # AppleScript: wait briefly, then click "Call" button
+        applescript = f'''
+        delay 1
+        tell application "System Events"
+            tell process "Phone"
+                try
+                    click button "Call" of window 1
+                end try
+            end tell
+        end tell
+        '''
+        subprocess.run(["osascript", "-e", applescript], check=True)
+
         return f"📞 Calling {contact_key} ({contact_info}) now..."
     except subprocess.CalledProcessError as e:
         return f"❌ Failed to call {contact_key}: {e}"
