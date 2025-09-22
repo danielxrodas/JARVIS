@@ -15,24 +15,55 @@ from typing import Optional
 
 load_dotenv()
 
-contacts = {
-    "dad": os.getenv("DAD"),
-    "mom": os.getenv("MOM"),
-    "david": os.getenv("DAVID"),
-    "myself": os.getenv("MYSELF"),
-}
+
+def get_contact_number(name: str) -> str | None:
+    """
+    Look up a contact's phone number from the macOS Contacts app.
+    Prefers 'mobile' number if available.
+    """
+    applescript = f'''
+    tell application "Contacts"
+        set thePeople to every person whose name contains "{name}"
+        if (count of thePeople) > 0 then
+            set thePerson to item 1 of thePeople
+            if (count of phones of thePerson) > 0 then
+                repeat with ph in phones of thePerson
+                    if label of ph contains "mobile" then
+                        return value of ph
+                    end if
+                end repeat
+                -- fallback: just return first phone
+                return value of first phone of thePerson
+            end if
+        end if
+        return ""
+    end tell
+    '''
+    result = subprocess.run(
+        ["osascript", "-e", applescript],
+        capture_output=True,
+        text=True
+    )
+    number = result.stdout.strip()
+    return number if number else None
 
 
 @function_tool()
-async def send_text_message(recipient: str, message: str, contacts_dict: dict = contacts):
+async def send_text_message(recipient: str, message: str):
     """
     Sends a message through the macOS Messages app.
     recipient: either a name in contacts or a phone number string
     message: message text
     """
     try:
-        recipient = recipient.strip().lower()
-        recipient_number = contacts_dict.get(recipient, recipient)
+        recipient = recipient.strip()
+
+        # Try to resolve via Contacts app
+        recipient_number = get_contact_number(recipient)
+
+        # If not found in Contacts, assume raw phone number
+        if not recipient_number:
+            recipient_number = recipient
 
         applescript = f'''
         tell application "Messages"
@@ -54,13 +85,37 @@ async def send_text_message(recipient: str, message: str, contacts_dict: dict = 
         )
 
         if result.returncode == 0:
-            return f"Message sent to {recipient}."
+            return f"Message sent to {recipient} ({recipient_number})."
         else:
             return f"Failed to send message to {recipient}: {result.stderr or result.stdout}"
 
     except Exception as e:
         return f"Error: {str(e)}"
     
+def get_contact_email(name: str) -> str | None:
+    """
+    Look up a contact's email address from the macOS Contacts app.
+    Prefers the first email, or None if not found.
+    """
+    applescript = f'''
+    tell application "Contacts"
+        set thePeople to every person whose name contains "{name}"
+        if (count of thePeople) > 0 then
+            set thePerson to item 1 of thePeople
+            if (count of emails of thePerson) > 0 then
+                return value of first email of thePerson
+            end if
+        end if
+        return ""
+    end tell
+    '''
+    result = subprocess.run(
+        ["osascript", "-e", applescript],
+        capture_output=True,
+        text=True
+    )
+    email = result.stdout.strip()
+    return email if email else None
     
 @function_tool()
 async def send_email(
@@ -74,19 +129,29 @@ async def send_email(
     Send an email through Gmail.
     
     Args:
-        to_email: Recipient email address
+        to_email: Recipient email address or contact name
         subject: Email subject line
         message: Email body content
-        cc_email: Optional CC email address
+        cc_email: Optional CC email address or contact name
     """
     try:
+        # Resolve contact names to actual emails
+        resolved_to = get_contact_email(to_email) or to_email
+        if "@" not in resolved_to:
+            return f"I'm sorry sir but unfortunately '{to_email}' doesn’t have an email provided."
+        
+        resolved_cc = None
+        if cc_email:
+            resolved_cc = get_contact_email(cc_email) or cc_email
+            if "@" not in resolved_cc:
+                return f"I'm sorry sir but unfortunately '{cc_email}' doesn’t have an email provided."
+
         # Gmail SMTP configuration
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
         
-        # Get credentials from environment variables
         gmail_user = os.getenv("GMAIL_USER")
-        gmail_password = os.getenv("GMAIL_APP_PASSWORD")  # Use App Password, not regular password
+        gmail_password = os.getenv("GMAIL_APP_PASSWORD")
         
         if not gmail_user or not gmail_password:
             logging.error("Gmail credentials not found in environment variables")
@@ -95,82 +160,59 @@ async def send_email(
         # Create message
         msg = MIMEMultipart()
         msg['From'] = gmail_user
-        msg['To'] = to_email
+        msg['To'] = resolved_to
         msg['Subject'] = subject
         
-        # Add CC if provided
-        recipients = [to_email]
-        if cc_email:
-            msg['Cc'] = cc_email
-            recipients.append(cc_email)
+        recipients = [resolved_to]
+        if resolved_cc:
+            msg['Cc'] = resolved_cc
+            recipients.append(resolved_cc)
         
-        # Attach message body
         msg.attach(MIMEText(message, 'plain'))
         
-        # Connect to Gmail SMTP server
+        # Connect to Gmail SMTP
         server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()  # Enable TLS encryption
+        server.starttls()
         server.login(gmail_user, gmail_password)
-        
-        # Send email
-        text = msg.as_string()
-        server.sendmail(gmail_user, recipients, text)
+        server.sendmail(gmail_user, recipients, msg.as_string())
         server.quit()
         
-        logging.info(f"Email sent successfully to {to_email}")
-        return f"Email sent successfully to {to_email}"
+        return f"📧 Email sent successfully to {resolved_to}" + (f" (cc: {resolved_cc})" if resolved_cc else "")
         
     except smtplib.SMTPAuthenticationError:
-        logging.error("Gmail authentication failed")
-        return "Email sending failed: Authentication error. Please check your Gmail credentials."
+        return "❌ Email sending failed: Authentication error. Please check your Gmail credentials."
     except smtplib.SMTPException as e:
-        logging.error(f"SMTP error occurred: {e}")
-        return f"Email sending failed: SMTP error - {str(e)}"
+        return f"❌ Email sending failed: SMTP error - {str(e)}"
     except Exception as e:
-        logging.error(f"Error sending email: {e}")
-        return f"An error occurred while sending email: {str(e)}"
-    
+        return f"❌ An error occurred while sending email: {str(e)}"
 
-CONTACTS = {
-    "dad": os.getenv("DAD"),
-    "mom": os.getenv("MOM"),
-    "david": os.getenv("DAVID")
-}
 
-@function_tool
+@function_tool()
 async def call_contact(contact: str) -> str:
     """
-    Calls a contact using the Phone app on macOS (bypassing confirmation).
+    Calls a contact using macOS (FaceTime/Phone).
     
     Args:
-        contact (str): Name of the contact (e.g., "dad", "mom").
+        contact (str): Name of the contact (e.g., "Dad", "Mom") or raw number.
         
     Returns:
         str: Success or error message
     """
-    contact_key = contact.strip().lower()
-    contact_info = CONTACTS.get(contact_key)
-
-    if not contact_info:
-        return f"❌ Contact '{contact}' not found in your contacts."
-
     try:
-        # Launch Phone app with the number
-        subprocess.run(["open", f"tel://{contact_info}"], check=True)
+        contact = contact.strip()
 
-        # AppleScript: wait briefly, then click "Call" button
-        applescript = f'''
-        delay 1
-        tell application "System Events"
-            tell process "Phone"
-                try
-                    click button "Call" of window 1
-                end try
-            end tell
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", applescript], check=True)
+        # Try resolving via Contacts
+        number = get_contact_number(contact)
 
-        return f"📞 Calling {contact_key} ({contact_info}) now..."
+        # If not found in Contacts, assume raw phone number
+        if not number:
+            number = contact
+
+        # Use FaceTime (macOS doesn't have a standalone Phone app)
+        subprocess.run(["open", f"tel://{number}"], check=True)
+
+        return f"📞 Calling {contact} ({number}) now..."
     except subprocess.CalledProcessError as e:
-        return f"❌ Failed to call {contact_key}: {e}"
+        return f"❌ Failed to call {contact}: {e}"
+    except Exception as e:
+        return f"❌ Error: {e}"

@@ -315,7 +315,8 @@ async def get_eta(destination: str, origin: str = None, mode: str = "driving"):
 
 
 from kasa import SmartPlug
-from livekit.agents import function_tool  # Assuming this is your LiveKit agent tools import
+from livekit.agents import function_tool
+import os
 
 # Map lamp names to IPs
 LAMP_IPS = {
@@ -325,6 +326,11 @@ LAMP_IPS = {
     "lamp four": os.getenv("LAMP_FOUR_IP"),
 }
 
+# Map rooms to lamps
+ROOMS = {
+    "bedroom": ["lamp one", "lamp two"],
+    "living room": ["lamp three", "lamp four"],
+}
 
 async def _get_plug(lamp_name: str) -> SmartPlug:
     """Helper function to fetch and initialize the SmartPlug."""
@@ -336,51 +342,49 @@ async def _get_plug(lamp_name: str) -> SmartPlug:
     await plug.update()
     return plug
 
+async def _turn_lamps(lamp_names: list[str], turn_on: bool = True) -> str:
+    """
+    Helper function to turn multiple lamps on/off.
+    """
+    results = []
+    for name in lamp_names:
+        try:
+            plug = await _get_plug(name)
+            if turn_on:
+                await plug.turn_on()
+                results.append(f"✅ Turned ON {name}")
+            else:
+                await plug.turn_off()
+                results.append(f"✅ Turned OFF {name}")
+        except Exception as e:
+            results.append(f"❌ Error with {name}: {str(e)}")
+        finally:
+            try:
+                await plug.disconnect()
+            except:
+                pass
+    return "\n".join(results)
 
 @function_tool
-async def turn_on_lamp(lamp_name: str) -> str:
+async def turn_on_lamp(lamp_or_room: str) -> str:
     """
-    Turn ON a specific lamp.
-    
-    Args:
-        lamp_name (str): Name of the lamp. Example: "bedroom lamp"
-    
-    Returns:
-        str: Status message.
+    Turn ON a specific lamp or all lamps in a room.
     """
-    try:
-        plug = await _get_plug(lamp_name)
-        await plug.turn_on()
-        return f"✅ Turned ON {lamp_name}"
-    except Exception as e:
-        return f"❌ Error turning on {lamp_name}: {str(e)}"
-    finally:
-        try:
-            await plug.disconnect()
-        except:
-            pass
-
+    lamp_or_room = lamp_or_room.lower()
+    if lamp_or_room in ROOMS:
+        lamp_names = ROOMS[lamp_or_room]
+    else:
+        lamp_names = [lamp_or_room]
+    return await _turn_lamps(lamp_names, turn_on=True)
 
 @function_tool
-async def turn_off_lamp(lamp_name: str) -> str:
+async def turn_off_lamp(lamp_or_room: str) -> str:
     """
-    Turn OFF a specific lamp.
-    
-    Args:
-        lamp_name (str): Name of the lamp. Example: "bedroom lamp"
-    
-    Returns:
-        str: Status message.
+    Turn OFF a specific lamp or all lamps in a room.
     """
-    try:
-        plug = await _get_plug(lamp_name)
-        await plug.turn_off()
-        return f"✅ Turned OFF {lamp_name}"
-    except Exception as e:
-        return f"❌ Error turning off {lamp_name}: {str(e)}"
-    finally:
-        try:
-            await plug.disconnect()
-        except:
-            pass
-
+    lamp_or_room = lamp_or_room.lower()
+    if lamp_or_room in ROOMS:
+        lamp_names = ROOMS[lamp_or_room]
+    else:
+        lamp_names = [lamp_or_room]
+    return await _turn_lamps(lamp_names, turn_on=False)
