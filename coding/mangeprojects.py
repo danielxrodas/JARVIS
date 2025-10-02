@@ -30,7 +30,7 @@ def get_current_project() -> str:
             return data.get("current_project")
     return None
 
-PYTHON_PATH = os.getenv("PYTHON_PATH")
+PYTHON_PATH = os.getenv("PYTHON_PATH", "~/projects")
 # Hardcoded root path for all projects
 PROJECTS_ROOT = os.path.expanduser(
     PYTHON_PATH

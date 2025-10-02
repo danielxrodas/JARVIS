@@ -18,7 +18,7 @@ from watchdog.events import PatternMatchingEventHandler
 
 load_dotenv()
 
-SPRING_BOOT_PATH = os.getenv("SPRING_BOOT_PATH")
+SPRING_BOOT_PATH = os.getenv("SPRING_BOOT_PATH", "~/spring_projects")
 
 SPRING_PROJECTS_ROOT = os.path.expanduser(SPRING_BOOT_PATH)
 SPRING_MEMORY_FILE = os.path.join(SPRING_PROJECTS_ROOT, "project_memory.json")

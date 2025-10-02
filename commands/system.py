@@ -50,37 +50,7 @@ async def unmute_microphone() -> str:
     except Exception as e:
         return f"Could not restore system audio: {e}"
 
-PATH = os.getenv("PATH")    
-@function_tool
-async def start_a_new_project(folder_name: str, path: str = PATH) -> str:
-    """
-    Creates a new folder at the default path unless a custom path is specified.
-    """
-    try:
-        # Ensure folder name is safe for AppleScript
-        safe_name = folder_name.replace('"', '\\"')
 
-        applescript = f'''
-        tell application "Finder"
-            if not (exists folder "{safe_name}" of POSIX file "{path}") then
-                make new folder at POSIX file "{path}" with properties {{name:"{safe_name}"}}
-            end if
-        end tell
-        '''
-
-        proc = await asyncio.create_subprocess_exec(
-            'osascript', '-e', applescript,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode == 0:
-            return f"✅ Folder '{folder_name}' created at {path}"
-        else:
-            return f"❌ Failed to create folder: {stderr.decode().strip()}"
-    except Exception as e:
-        return f"❌ Exception occurred: {e}"
 
 # System Restart
 @function_tool()

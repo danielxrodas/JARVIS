@@ -9,20 +9,18 @@ from openai.types.beta.realtime.session import TurnDetection
 from prompts import AGENT_INSTRUCTION
 from commands.calendar import create_calendar_event, set_reminder, delete_reminder, delete_calendar_event
 from commands.communication import send_text_message, send_email, call_contact
-from commands.media import play_music, can_you_open_the_app, search_web
+from commands.media import play_music, can_you_open_the_app, search_web, close_app
 from commands.system import (
     unmute_microphone,
     mute_microphone,
     restart_system,
-    start_a_new_project,
     power_down,
 )
 from commands.utilities import (
     get_time,
     get_date,
     get_weather,
-    generate_code,
-    get_eta,
+    get_directions,
     turn_off_lamp,
     turn_on_lamp,
 )
@@ -41,12 +39,8 @@ from coding.javaprojects import (
     generate_spring_java_code,
 )
 
-# from core.vision import JarvisVisionAsync
-# from core.vision_consumer import vision_event_consumer
 from mem0 import AsyncMemoryClient
 import json
-# import asyncio
-# import time
 import logging
 
 load_dotenv()
@@ -77,68 +71,16 @@ class Assistant(Agent):
                 git_stage_file, git_unstage_file, git_commit,
                 git_push, git_undo_last_commit, git_status,
                 play_music, send_email, call_contact, power_down,
-                send_text_message, manage_python_project, 
+                send_text_message, manage_python_project, close_app,
                 create_or_open_python, generate_python_code, manage_spring_boot_project,
                 create_or_open_spring_file, generate_spring_java_code, 
                 create_calendar_event, set_reminder, delete_calendar_event,
-                mute_microphone, unmute_microphone, get_eta,
+                mute_microphone, unmute_microphone, get_directions,
                 turn_on_lamp, turn_off_lamp, delete_reminder,
                 restart_system,
             ],
             chat_ctx=chat_ctx
         )
-    #     self.vision_state = {
-    #         "face_detected": False,
-    #         "last_object": None,
-    #         "hand_count": 0,
-    #         "last_face_ts": 0,
-    #         "last_hand_ts": 0,
-    #     }
-
-    # # --- ADDED: Handle vision-specific queries ---
-    # async def handle_user_input(self, user_text: str):
-    #     """Handle user input and respond to vision-specific queries."""
-
-    #     text_lower = user_text.lower()
-
-    #     # Can you see me?
-    #     if "can you see me" in text_lower:
-    #         # optional: reset face_detected if last face > 2 sec ago
-    #         if time.time() - self.vision_state.get("last_face_ts", 0) > 2:
-    #             self.vision_state["face_detected"] = False
-
-    #         if self.vision_state.get("face_detected", False):
-    #             return await self.send_response("Yes, I see you clearly.")
-    #         else:
-    #             return await self.send_response("Not right now, I don’t see you.")
-
-    #     # What do you see?
-    #     if "what do you see" in text_lower:
-    #         obj = self.vision_state.get("last_object")
-    #         if obj:
-    #             return await self.send_response(f"I see a {obj}.")
-    #         else:
-    #             return await self.send_response("I don't see any objects right now.")
-
-    #     # How many fingers?
-    #     if "how many fingers" in text_lower:
-    #         count = self.vision_state.get("hand_count", 0)
-    #         if count > 0:
-    #             return await self.send_response(f"I see {count} fingers.")
-    #         else:
-    #             return await self.send_response("I can't detect your fingers right now.")
-
-    #     # Otherwise, default LLM handling
-    #     return await super().handle_user_input(user_text)
-
-    # # --- helper to send responses into chat context ---
-    # async def send_response(self, text: str):
-    #     if hasattr(self, "chat_ctx"):
-    #         self.chat_ctx.add_message({"role": "assistant", "content": text})
-    #     return text
-    
-    
-    
 
 # ==============================
 # ENTRYPOINT
@@ -205,31 +147,6 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Create assistant with correct ChatContent
     assistant = Assistant(chat_ctx=initial_ctx)
-    
-    
-    # # --- Vision integration start ---
-    # vision_queue = asyncio.Queue()
-    # vision = JarvisVisionAsync(event_queue=vision_queue, display=False, skip_frames=2, width=640, height=360)
-
-    # try:
-    #     await vision.capture_my_face(wait_seconds=2)
-    # except Exception:
-    #     pass
-
-    # vision_task = asyncio.create_task(vision.run())
-    # consumer_task = asyncio.create_task(vision_event_consumer(vision_queue, assistant, min_interval=1.0))
-
-    # def _shutdown_vision_tasks():
-    #     for t in (consumer_task, vision_task):
-    #         if not t.done():
-    #             t.cancel()
-    #     try:
-    #         asyncio.create_task(vision.stop())
-    #     except Exception:
-    #         pass
-
-    # ctx.add_shutdown_callback(lambda: _shutdown_vision_tasks())
-    # # --- Vision integration end ---
 
     # Start scheduler (reminders, etc.)
     start_scheduler(session)
@@ -246,15 +163,6 @@ async def entrypoint(ctx: agents.JobContext):
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
-    # await inject_video_frame(ctx, assistant)
-    # "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoibXkgbmFtZSIsInZpZGVvIjp7InJvb21Kb2luIjp0cnVlLCJyb29tIjoibXktcm9vbSIsImNhblB1Ymxpc2giOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWV9LCJzdWIiOiJpZGVudGl0eSIsImlzcyI6IkFQSUVxQXpKRGU1ZHNnNiIsIm5iZiI6MTc1ODA3ODc5OCwiZXhwIjoxNzU4MTAwMzk4fQ.auz2uqMECVRS1aYZShB0gYbaJDnQJzYfEAI5arRXCSI";
-
-    # Sync callback for transcription
-    # def on_transcription(event):
-    #     transcription = event.transcription
-    #     asyncio.create_task(assistant.handle_user_input(transcription))
-
-    # session.on("transcription", on_transcription)
 
     # Register shutdown callback
     ctx.add_shutdown_callback(lambda: shutdown_hook(session._agent.chat_ctx, mem0, memory_str))

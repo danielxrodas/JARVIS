@@ -1,85 +1,12 @@
-from livekit.agents import function_tool
 import os
-from openai import OpenAI
 from dotenv import load_dotenv
-import re
 from livekit.agents import function_tool, RunContext
 import requests
-from dotenv import load_dotenv
-from livekit.agents import function_tool, RunContext
-import subprocess
 from datetime import datetime, timedelta
+from kasa import SmartPlug
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-def convert_text_to_comments(ai_output: str) -> str:
-    """
-    Converts explanatory text outside of ```python``` code blocks
-    into Python comments.
-    """
-    result_lines = []
-    in_code_block = False
-    for line in ai_output.splitlines():
-        if line.strip().startswith("```"):
-            in_code_block = not in_code_block
-            # Only include ```python``` if code block starts
-            if in_code_block:
-                continue
-            else:
-                continue  # skip closing ```
-        if in_code_block:
-            result_lines.append(line)
-        else:
-            if line.strip() == "":
-                result_lines.append("")  # keep empty lines
-            else:
-                result_lines.append(f"# {line}")
-    return "\n".join(result_lines)
-
-@function_tool
-async def generate_code(prompt: str) -> str:
-    """
-    Generates code from a natural language prompt using OpenAI,
-    converts any explanatory text to comments, and opens in VSCode.
-    Saves in ~/Documents/Code Generation with a filename related to the prompt.
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a helpful coding assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0
-        )
-        ai_output = response.choices[0].message.content.strip()
-
-        # Convert any non-code text to comments
-        processed_code = convert_text_to_comments(ai_output)
-
-        # Folder path
-        folder_path = os.path.expanduser("~/Documents/Code Generation")
-        os.makedirs(folder_path, exist_ok=True)
-
-        # Create a sanitized filename from the prompt
-        sanitized_prompt = re.sub(r'[^0-9a-zA-Z]+', '_', prompt)[:50]
-        file_name = f"{sanitized_prompt}.py"
-        file_path = os.path.join(folder_path, file_name)
-
-        # Write processed code to file
-        with open(file_path, "w") as f:
-            f.write(processed_code)
-
-        # Open in VSCode
-
-        return processed_code
-
-    except Exception as e:
-        error_msg = f"❌ Failed to generate code: {e}"
-        print(error_msg)
-        return error_msg
     
 # ---------------------------------------------------------------------------------------------
 # Get time
@@ -269,11 +196,22 @@ async def get_daily_forecast(context: RunContext) -> str:
     except Exception as e:
         return f"An error occurred while retrieving today's forecast for {city}, sir: {str(e)}"
 
+
+def format_duration(minutes: int) -> str:
+    """Format minutes into 'X hours Y minutes' if over an hour."""
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    hours, mins = divmod(minutes, 60)
+    if mins == 0:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return f"{hours} hour{'s' if hours != 1 else ''} and {mins} minute{'s' if mins != 1 else ''}"
+
 @function_tool()
-async def get_eta(destination: str, origin: str = None, mode: str = "driving"):
+async def get_directions(destination: str, origin: str = None, mode: str = "driving"):
     """
-    Returns ETA using Google Maps API.
+    Returns the fastest route directions using Google Maps API.
     If origin is None, automatically uses the current city from get_current_city().
+    Includes ETA, arrival time, and main route summary.
     """
     API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
     if not API_KEY:
@@ -295,28 +233,40 @@ async def get_eta(destination: str, origin: str = None, mode: str = "driving"):
         if res.get("status") != "OK" or not res.get("routes"):
             return {"success": False, "commentary": f"Failed to get directions: {res.get('status')}"}
 
-        duration_sec = res["routes"][0]["legs"][0]["duration"]["value"]
+        # Fastest route is always first in response
+        route = res["routes"][0]
+        leg = route["legs"][0]
+
+        duration_sec = leg["duration"]["value"]
         eta_minutes = round(duration_sec / 60)
 
-        # Calculate expected arrival time
         arrival_time = datetime.now() + timedelta(minutes=eta_minutes)
         arrival_time_str = arrival_time.strftime("%I:%M %p")
 
-        commentary = f"ETA to {destination} is {eta_minutes} minutes. You should arrive by {arrival_time_str}."
+        # Main highway/road usually in summary
+        main_route = route.get("summary", "the suggested route")
+
+        formatted_duration = format_duration(eta_minutes)
+
+        commentary = (
+            f"Currently sir, it’s {formatted_duration} to {destination} "
+            f"if you take {main_route}, with an estimated time of arrival at {arrival_time_str}."
+        )
+
         return {
             "success": True,
             "eta_minutes": eta_minutes,
             "arrival_time": arrival_time_str,
-            "commentary": commentary
+            "main_route": main_route,
+            "commentary": commentary,
+            "full_directions": [step["html_instructions"] for step in leg["steps"]]
         }
 
     except Exception as e:
-        return {"success": False, "commentary": f"Error retrieving ETA: {str(e)}"}
+        return {"success": False, "commentary": f"Error retrieving directions: {str(e)}"}
 
 
-from kasa import SmartPlug
-from livekit.agents import function_tool
-import os
+
 
 # Map lamp names to IPs
 LAMP_IPS = {
