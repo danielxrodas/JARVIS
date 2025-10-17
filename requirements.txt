@@ -19,3 +19,4 @@ python-kasa
 gitpython
 watchdog
 openai
+newspaper3k
